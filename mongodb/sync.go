@@ -60,6 +60,17 @@ func revSync(block *types.Block, receipts types.Receipts) {
 	mgoParseAccount(block, receipts, true, nil)
 }
 
+func LightSync(block *types.Block, txs []*types.Transaction) {
+	log.Info("mongodb ==== call Sync() ====", "block", block.NumberU64(), "blockHash", block.Hash().String())
+	if !Mongo || MongoSlave {
+		return
+	}
+	if database == nil {
+		mongoInit()
+	}
+	go lightSyncBlock(block, txs)
+}
+
 func Sync(block *types.Block, receipts types.Receipts, state *state.StateDB) {
 	log.Info("mongodb ==== call Sync() ====", "block", block.NumberU64(), "blockHash", block.Hash().String())
 	if !Mongo || MongoSlave {
@@ -69,6 +80,14 @@ func Sync(block *types.Block, receipts types.Receipts, state *state.StateDB) {
 		mongoInit()
 	}
 	go syncBlock(block, receipts, state)
+}
+
+func lightSyncBlock(block *types.Block, txs []*types.Transaction) {
+	log.Info("mongodb ready ==== syncBlock() ====", "block", block.NumberU64(), "blockHash", block.Hash().String())
+	BlockLock.Lock()
+	defer BlockLock.Unlock()
+	mgoParseBlock(block, false)
+	simpleMgoParseTransaction(block, txs, false)
 }
 
 func syncBlock(block *types.Block, receipts types.Receipts, state *state.StateDB) {
@@ -331,6 +350,16 @@ func UpdateAccount(ma *mgoAccount, value string, time uint64, add bool, fee stri
 	}
 }
 
+func simpleMgoParseTransaction(block *types.Block, txs []*types.Transaction, reverse bool) {
+	logPrintAll("==== simpleMgoParseTransaction() ====", "block", block.NumberU64())
+	var wg sync.WaitGroup
+	for i, tx := range txs {
+		wg.Add(1)
+		go simpleProcessTx(i, tx, block, reverse, &wg)
+	}
+	wg.Wait()
+}
+
 func mgoParseTransaction(block *types.Block, receipts types.Receipts, reverse bool, state *state.StateDB) {
 	logPrintAll("==== mgoParseTransaction() ====", "block", block.NumberU64())
 	txs := block.Transactions()
@@ -340,6 +369,262 @@ func mgoParseTransaction(block *types.Block, receipts types.Receipts, reverse bo
 		go processTx(i, tx, block, receipts, reverse, state, &wg)
 	}
 	wg.Wait()
+}
+
+func simpleProcessTx(i int, tx *types.Transaction, block *types.Block, reverse bool, wg *sync.WaitGroup) {
+	// 不要 receipts state
+	defer wg.Done()
+	logPrintAll("==== simpleProcessTx() ====", "index", i, "txHash", tx.Hash().String())
+	mt := new(mgoTransaction)
+
+	mt.Hash = tx.Hash().String()
+	mt.Key = mt.Hash
+	mt.Nonce = tx.Nonce()
+	mt.BlockHash = block.Hash().String()
+	mt.BlockNumber = block.NumberU64()
+	mt.TransactionIndex = uint64(i)
+	mt.From = getTxFrom(tx).String()
+	mt.To = tx.To().String()
+	value := tx.Value().String()
+	valuef, _ := strconv.ParseFloat(value, 64)
+	mt.Value = valuef / getCointypeDiv("FSN")
+	mt.GasPrice = tx.GasPrice().String()
+	mt.GasLimit = tx.Gas()
+	mt.Timestamp = block.Time().Uint64()
+	mt.CoinType = "FSN"
+	mt.TxType = getTxType(tx)
+	txData := string(tx.Data())
+	logPrintAll("==== mgoParseTransaction() ====", "mt", mt)
+	if len(txData) > 0 {
+		logPrintAll("==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txData", txData)
+		//mt.Input = fmt.Sprintf("%x", txData)
+		if strings.HasPrefix(txData, "ODB") { // dex
+			txDataSlice := strings.Split(txData, dexDataSplit)
+			if txDataSlice[0] == "ODB" {
+				logPrintAll("mongodb ==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txType", "ODB")
+				mr := GetMrFromMatch(txDataSlice[2])
+				if mr != nil {
+					logPrintAll("==== mgoParseTransaction() ====", "xprotocol.UnCompress, mr", mr)
+					trade := txDataSlice[3]
+					dtost := mr.Price
+					mrPrice, _ := strconv.ParseFloat(dtost, 64)
+					vol := mr.CurVolume
+
+					oi := new(ODBInfo)
+					oi.Trade = trade
+					oi.Price = mr.Price
+					oi.Volumes = mr.Volumes
+					oi.Orders = mr.Orders
+					mt.Input = fmt.Sprintf("%x", oi)
+
+					for i, done := range mr.Done {
+						logPrintAll("==== mgoParseTransaction() ====", "done", done)
+						dtos := done.Quantity
+						dtos = customerString(dtos)
+						quantity, _ := strconv.ParseFloat(dtos, 64)
+						//TODO have done from xprotocol/exchange.go
+						//mgoUpdateOrder(done.Id, quantity)
+						//mgoUpdateOrderCaches(done.Id, quantity)
+						//TODO
+						mdt := new(mgoDexTx)
+						mdt.Hash = done.Id
+						//errc := CheckOrderCacheTxForODB(tbOrders, done.Id)
+						//if errc == false {
+						//	log.Warn("==== mgoParseTransaction() ====", "CheckOrderTxForODB not exist hash", tx.Hash().String())
+						//}
+						mdt.ParentHash = tx.Hash().String()
+						mdt.Height, _ = strconv.ParseUint(txDataSlice[1], 10, 64)
+						mdt.Number = block.NumberU64()
+						height := make([]byte, 20)
+						binary.BigEndian.PutUint64(height, mdt.Height)
+						mdt.Key = (crypto.Keccak256Hash([]byte(mdt.Hash), []byte(height))).String()
+						mdt.From = done.From.String()
+						mdt.OrderType = done.Ordertype
+						dtos = done.Price
+						mdt.Price, _ = strconv.ParseFloat(dtos, 64)
+						mdt.MatchPrice = mrPrice
+						mdt.Quantity = quantity
+						//mdt.TotalQuantity = getTotalQuantity(mdt.Hash)
+						//mdt.Completed = getCompleted(mdt.Hash)
+						mdt.TotalQuantity, _ = strconv.ParseFloat(vol[i].Vol, 64)
+						mdt.Completed = quantity
+						mdt.Rule = done.Rule
+						mdt.Side = strings.ToLower(done.Side)
+						mdt.Trade = done.Trade
+						mdt.Timestamp = uint64(done.Timestamp)
+						logPrintAll("==== mgoParseTransaction() ====", "mdt", mdt)
+						mgoInsertDexTx(mdt, reverse)
+
+						//update Balance
+						tradeSlice := strings.Split(done.Trade, "/")
+						Trade0 := tradeSlice[0]
+						Trade1 := tradeSlice[1]
+						From := done.From.String()
+						Timestamp := uint64(done.Timestamp)
+						if strings.ToLower(mdt.Side) == "buy" {
+							// "A/B"
+							// A: quan*UA - quan*UA*3/1000
+							// B: -price*quan*UB
+							if Trade0 == "FSN" {
+								ma := new(mgoAccount)
+								ma.Address = From
+								//UpdateBalance4State(ma, state, block.Time().Uint64())
+							} else {
+								mda := new(mgoDcrmAccount)
+								mda.Address = From
+								mda.CoinType = Trade0
+								mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+								mda.Timestamp = Timestamp
+								//UpdateDcrmBalance4State(mda, state)
+							}
+							if Trade1 == "FSN" {
+								ma := new(mgoAccount)
+								//to
+								ma.Address = From
+								//UpdateBalance4State(ma, state, block.Time().Uint64())
+							} else {
+								mda := new(mgoDcrmAccount)
+								mda.Address = From
+								mda.CoinType = Trade1
+								mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+								//UpdateDcrmBalance4State(mda, state)
+							}
+						} else if strings.ToLower(mdt.Side) == "sell" {
+							if Trade0 == "FSN" {
+								ma := new(mgoAccount)
+								ma.Address = From
+								//UpdateBalance4State(ma, state, block.Time().Uint64())
+							} else {
+								mda := new(mgoDcrmAccount)
+								mda.Address = From
+								mda.CoinType = Trade0
+								mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+								mda.Timestamp = Timestamp
+								//UpdateDcrmBalance4State(mda, state)
+							}
+							if Trade1 == "FSN" {
+								ma := new(mgoAccount)
+								ma.Address = From
+								//UpdateBalance4State(ma, state, block.Time().Uint64())
+							} else {
+								mda := new(mgoDcrmAccount)
+								mda.Address = From
+								mda.CoinType = Trade1
+								mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+								//UpdateDcrmBalance4State(mda, state)
+							}
+						}
+					}
+					mt.HashLen = len(mr.Done)
+					mt.CoinType = trade
+					mgoUpdateTransaction(mt, reverse)
+
+					mdb := new(mgoDexBlock)
+					mdb.Hash = tx.Hash().String()
+					Squence, _ := strconv.ParseInt(txDataSlice[1], 10, 64)
+					mdb.Squence = uint64(Squence)
+					mdb.Number = block.NumberU64()
+					mdb.Orders = mr.Orders
+					dtos := mr.Price
+					mdb.Price, _ = strconv.ParseFloat(dtos, 64)
+					mdb.Trade = trade
+					mdb.Timestamp = block.Time().Uint64()
+					dtos = mr.Volumes
+					mdb.Volumes, _ = strconv.ParseFloat(dtos, 64)
+					mgoInsertDexBlock(mdb, reverse)
+					return //do not do mgoUpdateTransaction again
+				}
+			}
+		} else {
+			mt.Input = hex.EncodeToString(tx.Data())
+			UpdataTransferHistoryStatus(tx, reverse)
+			txDataSlice := strings.Split(txData, ":")
+			mda := new(mgoDcrmAccount)
+			mda.Address = getTxFrom(tx).String()
+			if mt.TxType == txType_NEWTRADE {
+				//DO NOTHING
+			} else if mt.TxType == txType_CONFIRMADDRESS {
+				logPrintAll(" ==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txType", "CONFIRM")
+				//account := FindAccount(tbAccounts, mda.Address)
+				//if account != nil {
+				//	if account[0].IsConfirm == 0 {
+				if reverse == false {
+					UpdateComfirm(tbAccounts, mda.Address, 1)
+				} else {
+					UpdateComfirm(tbAccounts, mda.Address, 0)
+				}
+				//	}
+				//}
+				mt.CoinType = txDataSlice[2]
+			} else {
+				mt.CoinType = txDataSlice[3]
+				mda.CoinType = txDataSlice[3]
+				//fee
+				mda.SortId = coinmap[txDataSlice[3]]
+				mda.IsERC20, mda.CoinType = getERC20Info(txDataSlice[3])
+
+				//from
+				mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(txDataSlice[3]))).String()
+				mda.Timestamp = block.Time().Uint64()
+				mt.IsERC20, mt.CoinType = getERC20Info(txDataSlice[3])
+				if mt.TxType == txType_LOCKIN {
+					logPrintAll(" ==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txType", "LOCKIN")
+					mt.ContractFrom, mt.ContractTo = getAddressByTxHash(txDataSlice[1], txDataSlice[3])
+					//mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+					logPrintAll("LOCKIN", "mda", mda)
+					//UpdateDcrmBalance4State(mda, state)
+				} else if mt.TxType == txType_LOCKOUT {
+					logPrintAll(" ==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txType", "LOCKOUT")
+					//mda.Address = getTxFrom(tx).String()
+					//mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+					logPrintAll("LOCKOUT", "mda", mda)
+					//UpdateDcrmBalance4State(mda, state)
+					CoinType, err := getFeeCointype(mda.CoinType, mda.IsERC20)
+					if err == nil {
+						mdaFee := new(mgoDcrmAccount)
+						mdaFee.Address = getTxFrom(tx).String()
+						mdaFee.CoinType = CoinType
+						mdaFee.IsERC20 = 0
+						mdaFee.Key = (crypto.Keccak256Hash([]byte(mdaFee.Address), []byte(mdaFee.CoinType))).String()
+						logPrintAll("LOCKOUT", "mda(fee)", mdaFee)
+						//UpdateDcrmBalance4State(mdaFee, state)
+					}
+					mt.ContractFrom = mt.From
+					mt.ContractTo = txDataSlice[1]
+				} else if mt.TxType == txType_DCRMTX {
+					logPrintAll(" ==== mgoParseTransaction() ====", "mt.Hash", mt.Hash, "txType", "DCRMTX")
+					//mda.Address = getTxFrom(tx).String()
+					//mda.Key = (crypto.Keccak256Hash([]byte(mda.Address), []byte(mda.CoinType))).String()
+					logPrintAll("DCRMTX", "mda1", mda)
+					//UpdateDcrmBalance4State(mda, state)
+					mda2 := new(mgoDcrmAccount)
+					mda2.Address = txDataSlice[1]
+					mda2.IsERC20, mda2.CoinType = getERC20Info(txDataSlice[3])
+					mda2.Key = (crypto.Keccak256Hash([]byte(mda2.Address), []byte(mda2.CoinType))).String()
+					logPrintAll("DCRMTX", "mda2", mda2)
+					//UpdateDcrmBalance4State(mda2, state)
+					mt.ContractFrom = mt.From
+					mt.ContractTo = txDataSlice[1]
+				}
+				valueTxf, _ := strconv.ParseFloat(txDataSlice[2], 64)
+				mt.ContractValue = valueTxf / getCointypeDiv(mt.CoinType)
+			}
+		}
+	} else {
+		UpdataTransferHistoryStatus(tx, reverse)
+	}
+	ma := new(mgoAccount)
+	//from
+	ma.Address = getTxFrom(tx).String()
+	logPrintAll("==== mgoParseTransaction() ====", "from ma.Address", ma.Address)
+	//UpdateAccount(ma, tx.Value().String(), block.Time().Uint64(), reverse, feeFsn)
+	//UpdateBalance4State(ma, state, block.Time().Uint64())
+	//to
+	maTo := new(mgoAccount)
+	maTo.Address = tx.To().String()
+	logPrintAll("==== mgoParseTransaction() ====", "to ma.Address", maTo.Address)
+	//UpdateBalance4State(maTo, state, block.Time().Uint64())
+	mgoUpdateTransaction(mt, reverse)
 }
 
 func processTx(i int, tx *types.Transaction, block *types.Block, receipts types.Receipts, reverse bool, state *state.StateDB, wg *sync.WaitGroup) {
