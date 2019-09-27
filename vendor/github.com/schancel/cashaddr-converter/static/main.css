@@ -1,0 +1,257 @@
+.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}
+
+* {
+  box-sizing: border-box;
+}
+
+div, p, input {
+  font-size: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+input {
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+body {
+  font-family: sans-serif;
+  font-size: 15px;
+  line-height: 1.5em;
+  margin: 0;
+  padding: 0;
+}
+
+input[type=text] {
+  border: 1px solid #ddd;
+  -webkit-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  -moz-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+}
+
+input[type=submit] {
+  height: 3em;
+  margin: 0;
+  padding: 0.5em 1em;
+  background-color: #79f;
+  color: white;
+  font-weight: bold;
+  -webkit-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  -moz-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+}
+
+button:focus,
+input:focus {
+  outline: 1px dotted #aaa;
+}
+
+button:focus,
+input[type=text]:focus {
+  outline-offset: -5px;
+}
+
+input[type=submit]:focus {
+  outline-offset: 5px;
+}
+
+h1 {
+  line-height: 1.25;
+}
+
+#address-converter {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+}
+
+#banner {
+  margin-bottom: 1em;
+}
+
+#donate {
+  margin-bottom: 2em;
+  text-align: center;
+}
+
+@media only screen and (max-width : 560px) {
+  #banner {
+    display: none;
+  }
+
+  #message-container {
+    margin-top: 2em;
+    padding-right: 2em;
+  }
+
+  #banner, #container, #donate {
+    width: 100%;
+  }
+
+  #submit-address {
+    flex-grow: 1;
+  }
+}
+
+@media only screen and (min-width : 561px) {
+  #banner h1 {
+    display: block;
+  }
+
+  #banner {
+    margin-top: 2em;
+  }
+
+  #banner, #container, #donate {
+    width: 80%;
+    max-width: 960px;
+  }
+
+  .qr-card {
+    max-width: 960px;
+  }
+
+  #submit-address {
+    margin-left: 1em;
+  }
+}
+
+#address-form {
+  background: white;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 2em;
+}
+
+#submit-address {
+  height: 3em;
+  width: 7em;
+}
+
+#address {
+  box-sizing: border-box;
+  flex-grow: 1;
+  font-size: 150%;
+  height: 2em;
+  margin: 0;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+}
+
+#message-container {
+  display: block;
+  margin-bottom: 2em;
+}
+
+#error {
+  background-color: #fee;
+  border-radius: .25em;
+  border: 2px solid #e99;
+  color: #f55;
+  display: flex;
+  flex-direction: row;
+  font-weight: bold;
+  justify-content: space-between;
+  padding: .25em .5em;
+  font-size: 2em;
+}
+
+#error-message {
+  font-size: .75em;
+  font-weight: normal;
+  line-height: 1.5em;
+}
+
+#dismiss-error {
+  cursor: pointer;
+}
+
+#qr-codes {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  margin-top: 1em;
+  -webkit-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  -moz-box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+  box-shadow: 0px 2px 5px 0px rgba(138,138,138,0.48);
+}
+
+.qr-card {
+  align-items: stretch;
+  background-color: white;
+  display: none;
+  flex-direction: column;
+  margin-bottom: 1em;
+  padding: 1em;
+}
+
+.tab {
+  cursor: pointer;
+  flex-grow: 1;
+  font-size: 150%;
+  height: 2em;
+}
+
+.tab.selected-tab {
+  background-color: white;
+  border-bottom: 1px solid white;
+  font-weight: bold;
+}
+
+.qr-card.selected-tab {
+  display: flex;
+}
+
+.qr-label {
+  font-size: 150%;
+  font-weight: bold;
+}
+
+.qr-address {
+  align-items: stretch;
+  border-radius: .25em;
+  border: 1px solid silver;
+  display: flex;
+  flex-direction: row;
+  font-weight: bold;
+  justify-content: space-between;
+  margin-top: 1em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.qr-address input {
+  border: none;
+  flex-grow: 1;
+  padding: 1em;
+  width: 40em;
+}
+
+.qr-address button {
+  cursor: pointer;
+  margin: 0;
+  padding: 1em 1.5em;
+}
+
+.qr-address button span {
+  font-size: 150%;
+}
+
+.qr-code {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  margin: 2em;
+}
+
+#tabs {
+  align-items: stretch;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
