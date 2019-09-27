@@ -36,6 +36,10 @@ func mongoInit() {
 
 }
 
+func MongoInit() {
+	mongoInit()
+}
+
 func mongoServerInit() {
 	if InitOnce {
 		return
@@ -597,6 +601,24 @@ func FindBlock(table string, num uint64) []mgoBlock {
 			return b
 		}
 		logPrintAll("==== FindBlock() ====", "UnFound number", num)
+	}
+	return nil
+}
+
+func FindTransactionToAccount(table string, address common.Address) []mgoTransaction {
+	collectionTable := getCollection(table)
+	if collectionTable == nil {
+		log.Warn("getCollection()", "table", table, "collectionTable", "nil")
+		return nil
+	}
+	var b []mgoTransaction
+	// db.Transactions.find({to:{$regex:'0x4Adf9b1C60Bbc4d4367B6C8B85aC0912a9b3a7F4',$options:'i'}})
+	//err := collectionTable.Find(bson.M{"to": address.String()}).All(&b)
+
+	err := collectionTable.Find(bson.M{"to": bson.M{"$regex": address.String(), "$options": "i"}}).All(&b)
+	if err == nil {
+		logPrintAll("==== FindDexBlock() ===", "address", address)
+		return b
 	}
 	return nil
 }

@@ -26,6 +26,12 @@ faucet:
 cfaucet:
 	build/env.sh go run build/ci.go install ./cmd/cfaucet
 
+mongoserver:
+	build/env.sh go run build/ci.go install ./cmd/mongoserver
+
+mongosync:
+	build/env.sh go run build/ci.go install ./cmd/mongosync
+
 eos_tracker:
 	build/env.sh go run build/ci.go install ./cmd/eos_tracker
 
@@ -34,7 +40,7 @@ swarm:
 	@echo "Done building."
 	@echo "Run \"$(GOBIN)/swarm\" to launch swarm."
 
-all: gdcrm faucet dexorder cfaucet eos_tracker
+all: gdcrm faucet dexorder cfaucet eos_tracker mongosync mongoserver
 	build/env.sh go run build/ci.go install ./cmd/bootnode
 #all:
 #	build/buildpbc.sh
